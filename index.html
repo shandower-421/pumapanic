@@ -321,6 +321,19 @@ html, body {
 .legend-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; font-size: 11px; color: var(--crt-text-dim); }
 .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 
+/* Help tabs */
+.help-tabs { display: flex; gap: 2px; margin-bottom: 14px; border-bottom: 1px solid var(--crt-border); }
+.help-tab {
+  padding: 6px 14px; background: none; border: 1px solid transparent; border-bottom: none;
+  color: var(--crt-text-dim); font-family: var(--font-mono); font-size: 12px;
+  cursor: pointer; border-radius: 3px 3px 0 0; transition: color 0.2s, background 0.2s;
+}
+.help-tab:hover { color: var(--crt-green); background: rgba(0,255,65,0.05); }
+.help-tab.active { color: var(--crt-amber); border-color: var(--crt-border); background: var(--crt-panel); position: relative; }
+.help-tab.active::after { content: ""; position: absolute; bottom: -1px; left: 0; right: 0; height: 1px; background: var(--crt-panel); }
+.help-tab-content { display: none; }
+.help-tab-content.active { display: block; }
+
 #announcements { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 
 @media (max-width: 768px) {
@@ -334,7 +347,7 @@ html, body {
   <div id="hud-top">
     <span class="title">PumaPanic</span>
     <button id="btn-help" onclick="showHowToPlay()">? Help</button>
-    <button id="mute-btn" onclick="toggleMute()" aria-label="Toggle sound" aria-pressed="false"></button>
+    <button id="mute-btn" onclick="toggleMute()" aria-label="Toggle sound" aria-pressed="true"></button>
     <div class="stats">
       <div class="stat"><span class="stat-label">Turn</span><span class="stat-value" id="stat-turn">0</span></div>
       <div class="stat"><span class="stat-label">Threats Left</span><span class="stat-value" id="stat-threats">49</span></div>
@@ -904,7 +917,7 @@ function enqueueAndProcess(events) {
 /* ============================================================
    AUDIO SYSTEM
    ============================================================ */
-let _muted = true;
+let _muted = false;
 let _audioCtx = null;
 
 function toggleMute() {
@@ -1551,31 +1564,51 @@ function render() {
     const x = CENTER + Math.cos(angle) * FIREWALL_RADIUS;
     const y = CENTER + Math.sin(angle) * FIREWALL_RADIUS;
     if (G.firewalls[a]) {
-      ctx.fillStyle = "rgba(0, 255, 65, 0.3)";
+      // Draw brick wall icon
+      const w = 22, h = 18;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle + Math.PI / 2); // orient perpendicular to radius
+      // Wall background
+      ctx.fillStyle = "rgba(0, 255, 65, 0.15)";
+      ctx.fillRect(-w/2, -h/2, w, h);
+      // Brick pattern — 3 rows
       ctx.strokeStyle = "#00ff41";
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(-w/2, -h/2, w, h);
+      // Horizontal mortar lines
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(x, y, 16, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.moveTo(-w/2, -h/2 + h/3); ctx.lineTo(w/2, -h/2 + h/3);
+      ctx.moveTo(-w/2, -h/2 + 2*h/3); ctx.lineTo(w/2, -h/2 + 2*h/3);
       ctx.stroke();
-      ctx.font = "bold 12px 'Courier New', monospace";
-      ctx.fillStyle = "#00ff41";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("FW", x, y);
+      // Vertical mortar — staggered
+      ctx.beginPath();
+      ctx.moveTo(0, -h/2); ctx.lineTo(0, -h/2 + h/3);           // top row center
+      ctx.moveTo(-w/4, -h/2 + h/3); ctx.lineTo(-w/4, -h/2 + 2*h/3); // mid row
+      ctx.moveTo(w/4, -h/2 + h/3); ctx.lineTo(w/4, -h/2 + 2*h/3);
+      ctx.moveTo(0, -h/2 + 2*h/3); ctx.lineTo(0, h/2);           // bottom row center
+      ctx.stroke();
+      ctx.restore();
     } else {
+      // Destroyed firewall — broken outline
+      const w = 22, h = 18;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle + Math.PI / 2);
       ctx.strokeStyle = "rgba(255, 51, 51, 0.3)";
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 3]);
-      ctx.beginPath();
-      ctx.arc(x, y, 16, 0, Math.PI * 2);
-      ctx.stroke();
+      ctx.strokeRect(-w/2, -h/2, w, h);
       ctx.setLineDash([]);
-      ctx.font = "bold 11px 'Courier New', monospace";
-      ctx.fillStyle = "rgba(255, 51, 51, 0.4)";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("XX", x, y);
+      // X through it
+      ctx.strokeStyle = "rgba(255, 51, 51, 0.4)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-w/2 + 3, -h/2 + 3); ctx.lineTo(w/2 - 3, h/2 - 3);
+      ctx.moveTo(w/2 - 3, -h/2 + 3); ctx.lineTo(-w/2 + 3, h/2 - 3);
+      ctx.stroke();
+      ctx.restore();
 
       // Harden target highlight
       if (G.hardenTargets && G.hardenTargets.includes(a)) {
@@ -2088,6 +2121,7 @@ function log(msg, level) {
 function showMainMenu() {
   const modal = document.getElementById("modal-overlay");
   const content = document.getElementById("modal-content");
+  content.dataset.dismissable = "false";
   // Build preset buttons
   let presetBtns = Object.entries(DIFFICULTY_PRESETS).map(([id, p]) =>
     `<button class="action-btn" style="font-size:10px;padding:4px 10px;" onclick="applyPreset('${id}')">${p.label}</button>`
@@ -2135,102 +2169,197 @@ function showMainMenu() {
   modal.classList.add("active");
 }
 
-function showHowToPlay() {
+function showHowToPlay(tab) {
   const modal = document.getElementById("modal-overlay");
   const content = document.getElementById("modal-content");
+  content.dataset.dismissable = "true";
+  const activeTab = tab || "gameplay";
+
+  function tabCls(id) { return id === activeTab ? "help-tab active" : "help-tab"; }
+  function panelCls(id) { return id === activeTab ? "help-tab-content active" : "help-tab-content"; }
+
   content.innerHTML = `
     <h2>How to Play</h2>
-    <div class="htp-section">
-      <h4>Objective</h4>
-      <ul>
-        <li>Defeat all threats in the threat deck before they destroy all 6 servers</li>
-        <li>You win if the threat deck is empty AND no threats remain, with at least 1 server standing</li>
-        <li>You lose if all 6 servers are destroyed</li>
-      </ul>
+    <div class="help-tabs">
+      <button class="${tabCls("gameplay")}" onclick="showHowToPlay('gameplay')">Gameplay</button>
+      <button class="${tabCls("cards")}" onclick="showHowToPlay('cards')">Cards</button>
+      <button class="${tabCls("threats")}" onclick="showHowToPlay('threats')">Threats</button>
+      <button class="${tabCls("tips")}" onclick="showHowToPlay('tips')">Tips</button>
+      <button class="${tabCls("about")}" onclick="showHowToPlay('about')">About</button>
     </div>
-    <div class="htp-section">
-      <h4>The Board</h4>
-      <ul>
-        <li>5 concentric zones: Internet (outer), Perimeter, Network, Endpoint, Core (center)</li>
-        <li>6 network segments (arcs): DMZ, Web Services, Corporate, Engineering, Finance, Executive</li>
-        <li>6 Firewalls guard the Endpoint/Core boundary (one per segment)</li>
-        <li>6 Servers sit in the Core (your win condition)</li>
-      </ul>
+
+    <!-- GAMEPLAY TAB -->
+    <div class="${panelCls("gameplay")}">
+      <div class="htp-section">
+        <h4>Objective</h4>
+        <ul>
+          <li>Defeat all threats before they destroy your 6 servers</li>
+          <li>Win: threat deck empty, no threats on board, at least 1 server standing</li>
+          <li>Lose: all 6 servers destroyed</li>
+        </ul>
+      </div>
+      <div class="htp-section">
+        <h4>The Board</h4>
+        <ul>
+          <li>5 concentric rings: Internet (outer), Perimeter, Network, Endpoint, Core (center)</li>
+          <li>6 network segments divided into 3 color-coded pairs: DMZ/Web, Corp/Eng, Fin/Exec</li>
+          <li>6 Firewalls on the Endpoint/Core boundary — one per segment</li>
+          <li>6 Servers in the Core — these are your win condition</li>
+        </ul>
+      </div>
+      <div class="htp-section">
+        <h4>Each Turn</h4>
+        <ul>
+          <li><b>1. Draw</b> — Automatically draw cards to fill your hand</li>
+          <li><b>2. Discard</b> — Click a card to discard it and draw a replacement (red borders = discard mode). Click Skip Discard to keep your hand</li>
+          <li><b>3. Play</b> — Click a card to select it, then click a highlighted threat on the board to attack. Play as many cards as you want, then click End Play Phase</li>
+          <li><b>4. Advance</b> — All threats move 1 ring inward. Threats reaching Endpoint destroy firewalls, then servers. Threats in the Core rotate clockwise</li>
+          <li><b>5. Spawn</b> — 2 new threats drawn from the deck and placed in the Internet ring. Event tokens (Zero-Day, DDoS) may also appear</li>
+        </ul>
+      </div>
+      <div class="htp-section">
+        <h4>Targeting Rules</h4>
+        <ul>
+          <li>Cards must match the threat's <b>ring</b> (Perimeter/Network/Endpoint) AND <b>segment pair</b></li>
+          <li>Threats in the Internet ring cannot be targeted by any card</li>
+          <li>Threats in the Core can only be hit by Contractor or Incident Commander</li>
+          <li>"Any Segment" cards work in their ring regardless of which arc the threat is in</li>
+        </ul>
+      </div>
     </div>
-    <div class="htp-section">
-      <h4>Each Turn (5 phases)</h4>
-      <ul>
-        <li><b>1. Draw</b> — Draw cards until you have 5</li>
-        <li><b>2. Discard</b> — Optionally discard 1 card and draw a replacement</li>
-        <li><b>3. Play</b> — Play any number of cards to attack threats. Cards must match the threat's ring AND segment</li>
-        <li><b>4. Advance</b> — All threats move 1 ring inward. Threats at Endpoint destroy firewalls/servers</li>
-        <li><b>5. Spawn</b> — 2 new threat tokens drawn and placed in the Internet ring</li>
-      </ul>
+
+    <!-- CARDS TAB -->
+    <div class="${panelCls("cards")}">
+      <div class="htp-section">
+        <h4>Defense Cards (Ring + Segment)</h4>
+        <ul>
+          <li><b>Perimeter Def</b> — 1 damage to a threat in the Perimeter ring, matching segment pair. 9 in deck (3 per pair)</li>
+          <li><b>Network Def</b> — 1 damage to a threat in the Network ring, matching segment pair. 9 in deck</li>
+          <li><b>Endpoint Def</b> — 1 damage to a threat in the Endpoint ring, matching segment pair. 9 in deck</li>
+        </ul>
+      </div>
+      <div class="htp-section">
+        <h4>Wildcard Defense (Ring, Any Segment)</h4>
+        <ul>
+          <li><b>Firewall Rule</b> — 1 damage, Perimeter ring, any segment. 3 in deck</li>
+          <li><b>Network ACL</b> — 1 damage, Network ring, any segment. 3 in deck</li>
+          <li><b>Host Patch</b> — 1 damage, Endpoint ring, any segment. 3 in deck</li>
+        </ul>
+      </div>
+      <div class="htp-section">
+        <h4>Flexible Targeting</h4>
+        <ul>
+          <li><b>Incident Commander</b> — 1 damage, any single ring, any segment. 2 in deck</li>
+          <li><b>Contractor</b> — 1 damage, any threat anywhere on the board (including Core). 2 in deck</li>
+          <li><b>Escalation</b> — 2 damage to a threat in any targetable ring. 2 in deck</li>
+          <li><b>Threat Intel</b> — 1 damage; if you slay the threat, draw 1 extra card. 2 in deck</li>
+        </ul>
+      </div>
+      <div class="htp-section">
+        <h4>Utility Cards</h4>
+        <ul>
+          <li><b>Honeypot</b> — Prevent 1 threat from advancing this turn. 3 in deck</li>
+          <li><b>Harden</b> — Rebuild 1 destroyed firewall (click to choose which). 3 in deck</li>
+          <li><b>Quarantine</b> — Push 1 threat back 1 ring toward the Internet. 2 in deck</li>
+        </ul>
+      </div>
+      <div class="htp-section">
+        <h4>Dead Cards</h4>
+        <ul>
+          <li><b>Misconfigured</b> — Does nothing. Discard it as soon as possible. Count varies by difficulty</li>
+        </ul>
+      </div>
+      <div class="htp-section">
+        <h4>Segment Pairs</h4>
+        <ul>
+          <li>Segment-specific cards cover 2 arcs each, matching the board colors:</li>
+          <li><b>DMZ / Web Services</b> — teal/cyan arcs</li>
+          <li><b>Corporate / Engineering</b> — blue arcs</li>
+          <li><b>Finance / Executive</b> — amber/orange arcs</li>
+        </ul>
+      </div>
     </div>
-    <div class="htp-section">
-      <h4>Cards</h4>
-      <ul>
-        <li><b>Perimeter/Network/Endpoint Def</b> — Hit threats in that ring, matching your segment pair</li>
-        <li><b>Firewall Rule / Network ACL / Host Patch</b> — Hit threats in that ring, ANY segment</li>
-        <li><b>Incident Commander</b> — Hit any threat in any ring, any segment</li>
-        <li><b>Contractor</b> — Hit any 1 threat anywhere</li>
-        <li><b>Honeypot</b> — Prevent 1 threat from advancing this turn</li>
-        <li><b>Harden</b> — Rebuild 1 destroyed firewall</li>
-        <li><b>Quarantine</b> — Push 1 threat back 1 ring</li>
-        <li><b>Threat Intel</b> — Hit 1 threat; draw an extra card if you slay it</li>
-        <li><b>Escalation</b> — Deal 2 damage to 1 threat</li>
-        <li><b>Misconfigured</b> — Dead card, does nothing</li>
-      </ul>
+
+    <!-- THREATS TAB -->
+    <div class="${panelCls("threats")}">
+      <div class="htp-section">
+        <h4>Standard Threats</h4>
+        <div class="legend-row"><span class="legend-dot" style="background:#33ff33"></span> <b>Script Kiddie</b> (1 HP) — Basic automated attack. Weak but numerous</div>
+        <div class="legend-row"><span class="legend-dot" style="background:#ff6633"></span> <b>Malware</b> (2 HP) — Standard threat. Takes 2 hits to destroy</div>
+        <div class="legend-row"><span class="legend-dot" style="background:#ff3333"></span> <b>APT</b> (3 HP) — Advanced persistent threat. Tough to bring down</div>
+      </div>
+      <div class="htp-section">
+        <h4>Boss Threats</h4>
+        <div class="legend-row"><span class="legend-dot" style="background:#ff00ff"></span> <b>Botnet Commander</b> (3 HP) — On spawn, creates 2 Script Kiddies in the same arc</div>
+        <div class="legend-row"><span class="legend-dot" style="background:#ff0066"></span> <b>Ransomware</b> (3 HP) — On spawn, destroys 1 random firewall</div>
+        <div class="legend-row"><span class="legend-dot" style="background:#cc0000"></span> <b>Nation State Actor</b> (4 HP) — Immune to Perimeter cards. Must be hit in Network/Endpoint or with special cards</div>
+        <div class="legend-row"><span class="legend-dot" style="background:#ff9900"></span> <b>Supply Chain</b> (2 HP) — On spawn, heals all threats in the same arc by 1 HP</div>
+      </div>
+      <div class="htp-section">
+        <h4>Event Tokens</h4>
+        <ul>
+          <li><b>Zero-Day Exploit</b> — All threats in Perimeter and Network rings advance 1 extra ring (red screen pulse)</li>
+          <li><b>DDoS Attack</b> — Destroys 1 random firewall and the server behind it</li>
+          <li><b>Coordinated Attack</b> — Draw 3 extra threat tokens this turn</li>
+          <li><b>Mass Campaign</b> — Draw 4 extra threat tokens this turn</li>
+        </ul>
+      </div>
+      <div class="htp-section">
+        <h4>Threat Behavior</h4>
+        <ul>
+          <li>Threats spawn in the Internet ring and advance 1 ring inward each turn</li>
+          <li>Threats cannot be targeted while in the Internet ring — they must reach the Perimeter first</li>
+          <li>When a threat reaches the Endpoint/Core boundary, it destroys the firewall in its arc</li>
+          <li>If no firewall remains, the threat destroys the server</li>
+          <li>Threats in the Core rotate clockwise, hitting firewalls and servers as they go</li>
+        </ul>
+      </div>
+      <div class="htp-section">
+        <h4>Visual Legend</h4>
+        <div class="legend-row"><span class="legend-dot" style="background:#00ff41"></span> Firewall (intact)</div>
+        <div class="legend-row"><span style="color:#ff3333;font-size:14px;">XX</span> Firewall (destroyed)</div>
+        <div class="legend-row"><span class="legend-dot" style="background:#ffb000"></span> Server (intact)</div>
+        <div class="legend-row"><span style="color:#ff3333;font-size:14px;">XX</span> Server (destroyed)</div>
+      </div>
     </div>
-    <div class="htp-section">
-      <h4>Segment Pairs</h4>
-      <ul>
-        <li>Segment-specific cards cover 2 arcs each:</li>
-        <li><b>DMZ/Web</b> — covers DMZ and Web Services arcs</li>
-        <li><b>Corp/Eng</b> — covers Corporate and Engineering arcs</li>
-        <li><b>Fin/Exec</b> — covers Finance and Executive arcs</li>
-      </ul>
+
+    <!-- TIPS TAB -->
+    <div class="${panelCls("tips")}">
+      <div class="htp-section">
+        <h4>Keyboard Shortcuts</h4>
+        <ul>
+          <li><b>1-5</b> — Select card from hand by position</li>
+          <li><b>Enter / Space</b> — Skip discard or end play phase</li>
+          <li><b>Escape</b> — Deselect card or close dialogs</li>
+          <li><b>H</b> — Toggle this help screen</li>
+          <li><b>M</b> — Toggle sound</li>
+        </ul>
+      </div>
+      <div class="htp-section">
+        <h4>Strategy Tips</h4>
+        <ul>
+          <li>Don't waste powerful cards on 1-HP Script Kiddies if a basic card will do</li>
+          <li>Save Honeypots for bosses or threats about to breach your firewalls</li>
+          <li>Harden cards are rare — choose which firewall to rebuild carefully</li>
+          <li>Discard Misconfigured cards immediately — they're dead weight</li>
+          <li>Quarantine pushes threats back outward — buy yourself time</li>
+          <li>Watch the Threats Left counter — when it hits 0, you just need to survive what's on the board</li>
+          <li>Threats in the Core can only be hit by Contractor or Incident Commander — save these</li>
+          <li>Active Defense (house rule) makes firewalls damage attackers on destruction — powerful on easy mode</li>
+        </ul>
+      </div>
     </div>
-    <div class="htp-section">
-      <h4>Threats</h4>
-      <ul>
-        <li><b>Script Kiddie</b> (1 HP) — basic automated attack</li>
-        <li><b>Malware</b> (2 HP) — standard threat</li>
-        <li><b>APT</b> (3 HP) — advanced persistent threat</li>
-        <li><b>Botnet Commander</b> (3 HP, Boss) — spawns 2 Script Kiddies</li>
-        <li><b>Ransomware</b> (3 HP, Boss) — destroys 1 firewall on spawn</li>
-        <li><b>Nation State</b> (4 HP, Boss) — immune to Perimeter cards</li>
-        <li><b>Supply Chain</b> (2 HP, Boss) — heals threats in same arc</li>
-      </ul>
+
+    <!-- ABOUT TAB -->
+    <div class="${panelCls("about")}">
+      <div style="text-align:center;padding:40px 20px;">
+        <p style="font-size:14px;color:var(--crt-amber);margin-bottom:16px;">PumaPanic</p>
+        <p style="font-size:12px;margin-bottom:8px;">Cyber Castle Panic</p>
+        <p style="margin-bottom:24px;">Built by <a href="https://www.greykit.com" target="_blank" rel="noopener" style="color:var(--crt-green);text-decoration:underline;">greykit.com</a></p>
+        <p style="font-size:10px;color:var(--crt-text-dim);">Inspired by Castle Panic by Justin De Witt / Fireside Games</p>
+      </div>
     </div>
-    <div class="htp-section">
-      <h4>Visual Legend</h4>
-      <div class="legend-row"><span class="legend-dot" style="background:#33ff33"></span> Script Kiddie (1 HP)</div>
-      <div class="legend-row"><span class="legend-dot" style="background:#ff6633"></span> Malware (2 HP)</div>
-      <div class="legend-row"><span class="legend-dot" style="background:#ff3333"></span> APT (3 HP)</div>
-      <div class="legend-row"><span class="legend-dot" style="background:#ff00ff"></span> Boss threat</div>
-      <div class="legend-row"><span class="legend-dot" style="background:#00ff41"></span> Firewall (intact)</div>
-      <div class="legend-row"><span class="legend-dot" style="background:#ffb000"></span> Server (intact)</div>
-    </div>
-    <div class="htp-section">
-      <h4>Keyboard Shortcuts</h4>
-      <ul>
-        <li>1-5 — Select card from hand</li>
-        <li>Enter/Space — Skip discard or end play phase</li>
-        <li>Escape — Deselect card / close dialogs</li>
-        <li>H — Toggle this help screen</li>
-      </ul>
-    </div>
-    <div class="htp-section">
-      <h4>Strategy Tips</h4>
-      <ul>
-        <li>Don't waste powerful cards on 1-HP Script Kiddies if a weaker card will do</li>
-        <li>Save Honeypots for boss monsters or threats about to hit your servers</li>
-        <li>Harden cards are precious — rebuild firewalls strategically</li>
-        <li>Discard Misconfigured cards immediately</li>
-        <li>Watch the threat deck counter — when it's low, you're close to winning!</li>
-      </ul>
-    </div>
+
     <div class="modal-actions">
       <button class="action-btn" onclick="closeModal();">Close</button>
     </div>
@@ -2240,12 +2369,12 @@ function showHowToPlay() {
 
 function showGameOver(won) {
   if (won) sfxWin(); else sfxLose();
+  const modal = document.getElementById("modal-overlay");
+  const content = document.getElementById("modal-content");
+  content.dataset.dismissable = "false";
   const serversLeft = G.servers.filter(Boolean).length;
   const score = G.slain * 10 + serversLeft * 50 + (won ? 200 : 0) - G.turn * 2;
   const grade = won ? (score >= 500 ? "S" : score >= 400 ? "A" : score >= 300 ? "B" : "C") : "F";
-
-  const modal = document.getElementById("modal-overlay");
-  const content = document.getElementById("modal-content");
   content.innerHTML = `
     <h2>${won ? "NETWORK SECURED" : "NETWORK COMPROMISED"}</h2>
     <p style="text-align:center;font-size:14px;color:${won ? 'var(--crt-green)' : 'var(--crt-red)'};">
@@ -2269,6 +2398,17 @@ function showGameOver(won) {
 function closeModal() {
   document.getElementById("modal-overlay").classList.remove("active");
 }
+
+// Click outside modal content to close (only for help/non-essential modals)
+document.getElementById("modal-overlay").addEventListener("click", (e) => {
+  if (e.target === document.getElementById("modal-overlay")) {
+    // Don't close if it's the main menu or game over (those require action)
+    const content = document.getElementById("modal-content");
+    if (content && content.dataset.dismissable === "true") {
+      closeModal();
+    }
+  }
+});
 
 function updateSlider(key, val) {
   const def = SLIDER_DEFS[key];
@@ -2308,6 +2448,7 @@ function showTutorial() {
   showTutorialStep();
 }
 function showTutorialStep() {
+  document.getElementById("modal-content").dataset.dismissable = "false";
   const step = TUTORIAL_STEPS[tutorialStep];
   const modal = document.getElementById("modal-overlay");
   const content = document.getElementById("modal-content");
