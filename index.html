@@ -726,6 +726,15 @@ function renderLoop() {
     }
   }
 
+  // Safety: flag any 0-HP threats that weren't marked dying
+  for (const t of G.threats) {
+    if (t.hp <= 0 && !t.dying) {
+      t.dying = true;
+      t.animScale = 0; // instant remove
+      G.slain++;
+    }
+  }
+
   // Remove fully shrunk threats
   const before = G.threats.length;
   G.threats = G.threats.filter(t => !t.dying || t.animScale > 0);
@@ -994,6 +1003,66 @@ function enqueueAndProcess(events) {
   animating = true;
   processEventQueue();
 }
+
+/* ============================================================
+   FLAVOR TEXT
+   ============================================================ */
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+const FLAVOR = {
+  advance: [
+    "Threats advancing...",
+    "Hostiles moving to next ring.",
+    "Perimeter breach in progress.",
+    "They're getting closer.",
+    "Multiple contacts advancing.",
+    "Incoming on all sectors.",
+    "Movement detected across the board.",
+  ],
+  spawn: [
+    "Scanning for new threats...",
+    "Checking threat feeds...",
+    "New IOCs detected.",
+    "Threat intel update incoming.",
+    "Network scan in progress...",
+    "Pulling latest signatures...",
+    "SIEM correlation running...",
+  ],
+  allClear: [
+    "Scanned the network... all clear this time.",
+    "Clean scan. Enjoy it while it lasts.",
+    "No new threats. Suspicious.",
+    "All quiet on the network front.",
+    "Nothing detected. Yet.",
+    "Clear scan. Don't get comfortable.",
+  ],
+  win: [
+    "All threats neutralized. Your servers survived.",
+    "Network secured. The SOC can finally breathe.",
+    "Incident closed. Zero data loss. Well played.",
+    "All hostiles eliminated. Time to write the post-mortem.",
+    "Threats cleared. You've earned that coffee.",
+  ],
+  lose: [
+    "All servers destroyed. The attackers won.",
+    "Total compromise. Time to update your resume.",
+    "Network down. The board will want answers.",
+    "Complete breach. Hope you had backups.",
+    "Game over. The threat actors are celebrating.",
+  ],
+  bossIntro: {
+    botnetCmd:   "A command-and-control signal just lit up.",
+    ransomware:  "Encryption routines detected. This is bad.",
+    nationState: "APT attribution confirmed. Nation state actor.",
+    supplyChain: "Trusted vendor channel compromised.",
+  },
+  milestone: {
+    5:  "You're holding the line.",
+    10: "Still standing. Stay sharp.",
+    15: "The threat deck is thinning. Keep pushing.",
+    20: "You've seen worse. Probably.",
+  },
+};
 
 /* ============================================================
    AUDIO SYSTEM
@@ -1337,7 +1406,7 @@ function doAdvancePhase() {
   updateAll();
 
   const queue = [];
-  queue.push({ type: "log", msg: "Threats advancing...", delay: 300 });
+  queue.push({ type: "log", msg: pick(FLAVOR.advance), delay: 300 });
 
   // Build events for each threat (snapshot the list to avoid mutation issues)
   const snapshot = [...G.threats];
@@ -1393,11 +1462,11 @@ function doSpawnPhase() {
   }
 
   const queue = [];
-  queue.push({ type: "log", msg: "Scanning for new threats...", delay: 400 });
+  queue.push({ type: "log", msg: pick(FLAVOR.spawn), delay: 400 });
 
   for (const token of tokens) {
     if (token.kind === "nothing") {
-      queue.push({ type: "log", msg: "Scanned the network... all clear this time.", delay: 300 });
+      queue.push({ type: "log", msg: pick(FLAVOR.allClear), delay: 300 });
       continue;
     }
 
@@ -1412,6 +1481,10 @@ function doSpawnPhase() {
     const tDef = THREAT_TYPES[token.type];
     const arc = Math.floor(Math.random() * NUM_ARCS);
     const bossMsg = tDef.boss ? ` BOSS: ${tDef.ability}` : "";
+    // Boss intro flavor
+    if (tDef.boss && FLAVOR.bossIntro[token.type]) {
+      queue.push({ type: "log", msg: FLAVOR.bossIntro[token.type], delay: 400 });
+    }
     queue.push({
       type: "spawn_threat",
       threatType: token.type,
@@ -1466,6 +1539,9 @@ function doSpawnPhase() {
     if (G.phase === "gameover") return;
     G.turn++;
     log(`=== TURN ${G.turn} ===`);
+    // Milestone callouts
+    if (FLAVOR.milestone[G.turn]) log(FLAVOR.milestone[G.turn]);
+    if (G.threatDeck.length === 0 && G.threats.length > 0) log("Last threats on the field. This is it.");
     doDrawPhase();
   }, delay: 300 });
 
@@ -2615,7 +2691,7 @@ function showGameOver(won) {
   content.innerHTML = `
     <h2>${won ? "NETWORK SECURED" : "NETWORK COMPROMISED"}</h2>
     <p style="text-align:center;font-size:14px;color:${won ? 'var(--crt-green)' : 'var(--crt-red)'};">
-      ${won ? "All threats neutralized! Your servers survived." : "All servers destroyed. The attackers won."}
+      ${won ? pick(FLAVOR.win) : pick(FLAVOR.lose)}
     </p>
     <p>Threats slain: ${G.slain}</p>
     <p>Servers remaining: ${serversLeft}/6</p>
@@ -2767,6 +2843,10 @@ function init() {
 
   // Continuous render loop for animations
   setInterval(renderLoop, 16);
+
+  console.log("%cPumaPanic", "color:#ffb000;font-size:20px;font-weight:bold;font-family:monospace;");
+  console.log("%cCyber Castle Panic — greykit.com", "color:#00ff41;font-size:12px;font-family:monospace;");
+  console.log("%cInspecting the source? That's the spirit. Never trust, always verify.", "color:#00aa2a;font-size:11px;font-family:monospace;");
 
   showMainMenu();
 }
