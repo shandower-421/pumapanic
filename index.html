@@ -67,19 +67,27 @@ html, body {
 .stat-value { color: var(--crt-green); text-shadow: 0 0 4px var(--crt-green-dark); transition: color 0.3s var(--ease-out-quart), text-shadow 0.3s; }
 .stat-value.flash { color: var(--crt-amber); text-shadow: 0 0 12px var(--crt-amber); }
 .stat-value.flash-red { color: var(--crt-red); text-shadow: 0 0 12px var(--crt-red); }
-#btn-help { background: none; border: 1px solid var(--crt-amber-dim); color: var(--crt-amber); font-family: var(--font-mono); font-size: 11px; padding: 2px 8px; cursor: pointer; border-radius: 3px; transition: background 0.2s, border-color 0.2s; }
-#btn-help:hover { background: rgba(255,176,0,0.1); border-color: var(--crt-amber); }
-#mute-btn {
-  font-size: 0; width: 28px; height: 24px; cursor: pointer; border-radius: 3px;
-  border: 1px solid var(--crt-border); background-color: transparent;
-  background: no-repeat center/16px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11 5L6 9H2v6h4l5 4V5z'/%3E%3Cline x1='23' y1='9' x2='17' y2='15'/%3E%3Cline x1='17' y1='9' x2='23' y2='15'/%3E%3C/svg%3E");
-  transition: border-color 0.2s;
+.hud-buttons { display: flex; gap: 4px; align-items: center; }
+.hud-buttons button {
+  height: 24px; cursor: pointer; border-radius: 3px;
+  border: 1px solid var(--crt-border); background: none;
+  font-family: var(--font-mono); font-size: 10px;
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
 }
-#mute-btn:hover { border-color: var(--crt-green-dim); }
+.hud-buttons button:hover { border-color: var(--crt-green-dim); background: rgba(0,255,65,0.05); }
+#btn-help { width: 24px; color: var(--crt-amber); font-size: 13px; font-weight: bold; }
+#btn-help:hover { border-color: var(--crt-amber); background: rgba(255,176,0,0.1); }
+#mute-btn {
+  font-size: 0; width: 28px;
+  background: no-repeat center/14px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11 5L6 9H2v6h4l5 4V5z'/%3E%3Cline x1='23' y1='9' x2='17' y2='15'/%3E%3Cline x1='17' y1='9' x2='23' y2='15'/%3E%3C/svg%3E");
+}
 #mute-btn[aria-pressed="true"] {
   border-color: var(--crt-green-dim);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300ff41' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11 5L6 9H2v6h4l5 4V5z'/%3E%3Cpath d='M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07'/%3E%3C/svg%3E");
 }
+#newgame-btn { color: var(--crt-text-dim); padding: 0 8px; text-transform: uppercase; letter-spacing: 1px; }
+#newgame-btn:hover { color: var(--crt-green); }
+#newgame-btn.confirm { color: var(--crt-red) !important; border-color: var(--crt-red) !important; }
 
 /* Canvas — square aspect ratio, height-driven */
 #canvas-wrap {
@@ -346,13 +354,16 @@ html, body {
 <div id="game-container">
   <div id="hud-top">
     <span class="title">PumaPanic</span>
-    <button id="btn-help" onclick="showHowToPlay()">? Help</button>
-    <button id="mute-btn" onclick="toggleMute()" aria-label="Toggle sound" aria-pressed="true"></button>
     <div class="stats">
       <div class="stat"><span class="stat-label">Turn</span><span class="stat-value" id="stat-turn">0</span></div>
       <div class="stat"><span class="stat-label">Threats Left</span><span class="stat-value" id="stat-threats">49</span></div>
       <div class="stat"><span class="stat-label">Servers</span><span class="stat-value" id="stat-servers">6/6</span></div>
       <div class="stat"><span class="stat-label">Slain</span><span class="stat-value" id="stat-slain">0</span></div>
+    </div>
+    <div class="hud-buttons">
+      <button id="btn-help" onclick="showHowToPlay()" aria-label="Help">?</button>
+      <button id="mute-btn" onclick="toggleMute()" aria-label="Toggle sound" aria-pressed="true"></button>
+      <button id="newgame-btn" onclick="newGameClick()" aria-label="New game">NEW</button>
     </div>
   </div>
 
@@ -1507,53 +1518,79 @@ function render() {
     ctx.stroke();
   }
 
-  // Ring labels
+  // Ring labels — along the DMZ/Web separator line, offset above it
   ctx.font = "9px 'Courier New', monospace";
   ctx.fillStyle = "rgba(0, 255, 65, 0.35)";
   ctx.textAlign = "center";
+  const sepAngle = 1 * ARC_ANGLE - Math.PI / 2; // DMZ/Web boundary angle
+  const perpOffset = -8; // pixels above the line (negative = CCW side)
   for (const ring of RINGS) {
     const midR = (ring.outer + ring.inner) / 2;
-    const lx = CENTER + midR;
-    const ly = CENTER - 4;
-    ctx.fillText(ring.name.toUpperCase(), lx, ly);
-  }
-
-  // Arc labels — pair name centered between the two arcs, individual names smaller
-  for (let p = 0; p < 3; p++) {
-    const [a1, a2] = SEGMENT_PAIRS[p];
-    const midAngle = (a1 + 1) * ARC_ANGLE - Math.PI / 2; // between the two arcs in the pair
-    const r = RINGS[0].outer + 14;
-    const lx = CENTER + Math.cos(midAngle) * r;
-    const ly = CENTER + Math.sin(midAngle) * r;
-
+    const lx = CENTER + Math.cos(sepAngle) * midR + Math.cos(sepAngle - Math.PI/2) * perpOffset;
+    const ly = CENTER + Math.sin(sepAngle) * midR + Math.sin(sepAngle - Math.PI/2) * perpOffset;
     ctx.save();
     ctx.translate(lx, ly);
-    let textAngle = midAngle + Math.PI / 2;
-    if (textAngle > Math.PI * 0.5 && textAngle < Math.PI * 1.5) textAngle += Math.PI;
-    ctx.rotate(textAngle);
-    ctx.font = "bold 10px 'Courier New', monospace";
-    ctx.fillStyle = adjustAlpha(ARCS[a1].pairColor, 0.7);
-    ctx.textAlign = "center";
-    ctx.fillText(PAIR_NAMES[p], 0, 0);
+    ctx.rotate(sepAngle);
+    ctx.fillText(ring.name.toUpperCase(), 0, 0);
     ctx.restore();
   }
 
-  // Individual arc names (smaller, inside the Internet ring)
+  // Draw text curved along an arc
+  function drawCurvedText(text, cx, cy, radius, centerAngle, fontSize, color, letterSpacing) {
+    ctx.font = `bold ${fontSize}px 'Courier New', monospace`;
+    ctx.fillStyle = color;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const charWidth = fontSize * 0.62;
+    const totalWidth = text.length * (charWidth + (letterSpacing || 0));
+    const angleSpan = totalWidth / radius;
+
+    // Determine if text is on the bottom half — if so, flip it to read right-side up
+    const normAngle = ((centerAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    const flip = normAngle > 0.05 && normAngle < Math.PI - 0.05;
+
+    if (flip) {
+      // Bottom half: draw on inner side, reversed character order so it reads L-to-R
+      const startAngle = centerAngle + angleSpan / 2;
+      for (let i = 0; i < text.length; i++) {
+        const charAngle = startAngle - (i + 0.5) * (angleSpan / text.length);
+        const px = cx + Math.cos(charAngle) * radius;
+        const py = cy + Math.sin(charAngle) * radius;
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(charAngle - Math.PI / 2);
+        ctx.fillText(text[i], 0, 0);
+        ctx.restore();
+      }
+    } else {
+      // Top half: normal draw
+      const startAngle = centerAngle - angleSpan / 2;
+      for (let i = 0; i < text.length; i++) {
+        const charAngle = startAngle + (i + 0.5) * (angleSpan / text.length);
+        const px = cx + Math.cos(charAngle) * radius;
+        const py = cy + Math.sin(charAngle) * radius;
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(charAngle + Math.PI / 2);
+        ctx.fillText(text[i], 0, 0);
+        ctx.restore();
+      }
+    }
+  }
+
+  // Pair labels — outside the board, curved along outer edge
+  for (let p = 0; p < 3; p++) {
+    const [a1] = SEGMENT_PAIRS[p];
+    const midAngle = (a1 + 1) * ARC_ANGLE - Math.PI / 2;
+    const r = RINGS[0].outer + 16;
+    drawCurvedText(PAIR_NAMES[p], CENTER, CENTER, r, midAngle, 12, adjustAlpha(ARCS[a1].pairColor, 0.8), 1);
+  }
+
+  // Individual arc names — inside the Internet ring, curved
   for (let a = 0; a < NUM_ARCS; a++) {
     const angle = (a + 0.5) * ARC_ANGLE - Math.PI / 2;
-    const r = (RINGS[0].outer + RINGS[0].inner) / 2;
-    const lx = CENTER + Math.cos(angle) * r;
-    const ly = CENTER + Math.sin(angle) * r;
-    ctx.save();
-    ctx.translate(lx, ly);
-    let textAngle = angle + Math.PI / 2;
-    if (textAngle > Math.PI * 0.5 && textAngle < Math.PI * 1.5) textAngle += Math.PI;
-    ctx.rotate(textAngle);
-    ctx.font = "7px 'Courier New', monospace";
-    ctx.fillStyle = adjustAlpha(ARCS[a].color, 0.4);
-    ctx.textAlign = "center";
-    ctx.fillText(ARCS[a].name, 0, 0);
-    ctx.restore();
+    const r = (RINGS[0].outer + RINGS[0].inner) / 2 + 2;
+    drawCurvedText(ARCS[a].name, CENTER, CENTER, r, angle, 10, adjustAlpha(ARCS[a].color, 0.5), 0);
   }
 
   if (!G) return;
@@ -2520,6 +2557,26 @@ document.getElementById("modal-overlay").addEventListener("click", (e) => {
     }
   }
 });
+
+let _newGameConfirmTimer = null;
+function newGameClick() {
+  const btn = document.getElementById("newgame-btn");
+  if (_newGameConfirmTimer) {
+    clearTimeout(_newGameConfirmTimer);
+    _newGameConfirmTimer = null;
+    btn.textContent = "NEW";
+    btn.classList.remove("confirm");
+    showMainMenu();
+  } else {
+    btn.textContent = "SURE?";
+    btn.classList.add("confirm");
+    _newGameConfirmTimer = setTimeout(() => {
+      _newGameConfirmTimer = null;
+      btn.textContent = "NEW";
+      btn.classList.remove("confirm");
+    }, 3000);
+  }
+}
 
 function updateSlider(key, val) {
   const def = SLIDER_DEFS[key];
