@@ -435,13 +435,13 @@ const PAIR_NAMES = ["DMZ/Web","Corp/Eng","Fin/Exec"];
 
 // Threat types
 const THREAT_TYPES = {
-  scriptKiddie: { name: "Script Kiddie", glyph: "SK", hp: 1, color: "#33ff33", boss: false },
-  malware:      { name: "Malware",       glyph: "MW", hp: 2, color: "#ff6633", boss: false },
-  apt:          { name: "APT",           glyph: "AP", hp: 3, color: "#ff3333", boss: false },
-  botnetCmd:    { name: "Botnet Cmdr",   glyph: "BC", hp: 3, color: "#ff00ff", boss: true, ability: "Spawns 2 Script Kiddies in same arc" },
-  ransomware:   { name: "Ransomware",    glyph: "RW", hp: 3, color: "#ff0066", boss: true, ability: "Destroys 1 firewall on spawn" },
-  nationState:  { name: "Nation State",  glyph: "NS", hp: 4, color: "#cc0000", boss: true, ability: "Immune to Perimeter cards" },
-  supplyChain:  { name: "Supply Chain",  glyph: "SC", hp: 2, color: "#ff9900", boss: true, ability: "Heals all threats in same arc by 1 HP" },
+  scriptKiddie: { name: "Script Kiddie", glyph: "SK", hp: 1, color: "#33ff33", boss: false, sides: 0 },   // circle
+  malware:      { name: "Malware",       glyph: "MW", hp: 2, color: "#ff6633", boss: false, sides: 4 },   // diamond
+  apt:          { name: "APT",           glyph: "AP", hp: 3, color: "#ff3333", boss: false, sides: 6 },   // hexagon
+  botnetCmd:    { name: "Botnet Cmdr",   glyph: "BC", hp: 3, color: "#ff00ff", boss: true,  sides: 8, ability: "Spawns 2 Script Kiddies in same arc" },
+  ransomware:   { name: "Ransomware",    glyph: "RW", hp: 3, color: "#ff0066", boss: true,  sides: 8, ability: "Destroys 1 firewall on spawn" },
+  nationState:  { name: "Nation State",  glyph: "NS", hp: 4, color: "#cc0000", boss: true,  sides: 8, ability: "Immune to Perimeter cards" },
+  supplyChain:  { name: "Supply Chain",  glyph: "SC", hp: 2, color: "#ff9900", boss: true,  sides: 8, ability: "Heals all threats in same arc by 1 HP" },
 };
 
 const EFFECT_TYPES = {
@@ -1564,49 +1564,89 @@ function render() {
     const x = CENTER + Math.cos(angle) * FIREWALL_RADIUS;
     const y = CENTER + Math.sin(angle) * FIREWALL_RADIUS;
     if (G.firewalls[a]) {
-      // Draw brick wall icon
-      const w = 22, h = 18;
+      // Firewall icon — brick wall with 3D side panel
+      const fw = 20, fh = 22, sd = 6; // front width, front height, side depth
       ctx.save();
       ctx.translate(x, y);
-      ctx.rotate(angle + Math.PI / 2); // orient perpendicular to radius
-      // Wall background
-      ctx.fillStyle = "rgba(0, 255, 65, 0.15)";
-      ctx.fillRect(-w/2, -h/2, w, h);
-      // Brick pattern — 3 rows
+
+      // Front face — brick wall
+      ctx.fillStyle = "rgba(0, 200, 50, 0.2)";
+      ctx.fillRect(-fw/2, -fh/2, fw, fh);
       ctx.strokeStyle = "#00ff41";
       ctx.lineWidth = 1.5;
-      ctx.strokeRect(-w/2, -h/2, w, h);
-      // Horizontal mortar lines
+      ctx.strokeRect(-fw/2, -fh/2, fw, fh);
+
+      // Horizontal mortar lines (4 rows of bricks)
+      ctx.lineWidth = 0.8;
+      const rows = 4;
+      const rh = fh / rows;
+      for (let r = 1; r < rows; r++) {
+        ctx.beginPath();
+        ctx.moveTo(-fw/2, -fh/2 + r * rh);
+        ctx.lineTo(fw/2, -fh/2 + r * rh);
+        ctx.stroke();
+      }
+      // Vertical mortar — staggered per row
+      for (let r = 0; r < rows; r++) {
+        const ry = -fh/2 + r * rh;
+        const offset = (r % 2 === 0) ? 0 : fw/4;
+        ctx.beginPath();
+        for (let vx = -fw/2 + fw/2 + offset; vx < fw/2; vx += fw/2) {
+          ctx.moveTo(vx, ry);
+          ctx.lineTo(vx, ry + rh);
+        }
+        if (r % 2 !== 0) {
+          ctx.moveTo(-fw/2 + fw/4, ry);
+          ctx.lineTo(-fw/2 + fw/4, ry + rh);
+          ctx.moveTo(-fw/2 + 3*fw/4, ry);
+          ctx.lineTo(-fw/2 + 3*fw/4, ry + rh);
+        } else {
+          ctx.moveTo(0, ry);
+          ctx.lineTo(0, ry + rh);
+        }
+        ctx.stroke();
+      }
+
+      // 3D side panel (right side, slight depth)
+      ctx.fillStyle = "rgba(0, 150, 40, 0.15)";
+      ctx.strokeStyle = "#00cc33";
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(-w/2, -h/2 + h/3); ctx.lineTo(w/2, -h/2 + h/3);
-      ctx.moveTo(-w/2, -h/2 + 2*h/3); ctx.lineTo(w/2, -h/2 + 2*h/3);
+      ctx.moveTo(fw/2, -fh/2);
+      ctx.lineTo(fw/2 + sd, -fh/2 - sd/2);
+      ctx.lineTo(fw/2 + sd, fh/2 - sd/2);
+      ctx.lineTo(fw/2, fh/2);
+      ctx.closePath();
+      ctx.fill();
       ctx.stroke();
-      // Vertical mortar — staggered
+
+      // 3D top panel
+      ctx.fillStyle = "rgba(0, 180, 45, 0.12)";
       ctx.beginPath();
-      ctx.moveTo(0, -h/2); ctx.lineTo(0, -h/2 + h/3);           // top row center
-      ctx.moveTo(-w/4, -h/2 + h/3); ctx.lineTo(-w/4, -h/2 + 2*h/3); // mid row
-      ctx.moveTo(w/4, -h/2 + h/3); ctx.lineTo(w/4, -h/2 + 2*h/3);
-      ctx.moveTo(0, -h/2 + 2*h/3); ctx.lineTo(0, h/2);           // bottom row center
+      ctx.moveTo(-fw/2, -fh/2);
+      ctx.lineTo(-fw/2 + sd, -fh/2 - sd/2);
+      ctx.lineTo(fw/2 + sd, -fh/2 - sd/2);
+      ctx.lineTo(fw/2, -fh/2);
+      ctx.closePath();
+      ctx.fill();
       ctx.stroke();
+
       ctx.restore();
     } else {
-      // Destroyed firewall — broken outline
-      const w = 22, h = 18;
+      // Destroyed firewall — dashed outline with X
+      const fw = 20, fh = 22;
       ctx.save();
       ctx.translate(x, y);
-      ctx.rotate(angle + Math.PI / 2);
-      ctx.strokeStyle = "rgba(255, 51, 51, 0.3)";
+      ctx.strokeStyle = "rgba(255, 51, 51, 0.25)";
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 3]);
-      ctx.strokeRect(-w/2, -h/2, w, h);
+      ctx.strokeRect(-fw/2, -fh/2, fw, fh);
       ctx.setLineDash([]);
-      // X through it
       ctx.strokeStyle = "rgba(255, 51, 51, 0.4)";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(-w/2 + 3, -h/2 + 3); ctx.lineTo(w/2 - 3, h/2 - 3);
-      ctx.moveTo(w/2 - 3, -h/2 + 3); ctx.lineTo(-w/2 + 3, h/2 - 3);
+      ctx.moveTo(-fw/2 + 3, -fh/2 + 3); ctx.lineTo(fw/2 - 3, fh/2 - 3);
+      ctx.moveTo(fw/2 - 3, -fh/2 + 3); ctx.lineTo(-fw/2 + 3, fh/2 - 3);
       ctx.stroke();
       ctx.restore();
 
@@ -1627,34 +1667,79 @@ function render() {
     }
   }
 
-  // Draw servers
+  // Draw servers (database cylinder — stacked ovals)
   for (let a = 0; a < NUM_ARCS; a++) {
     const angle = (a + 0.5) * ARC_ANGLE - Math.PI / 2;
     const r = CORE_RADIUS * 0.55;
     const x = CENTER + Math.cos(angle) * r;
     const y = CENTER + Math.sin(angle) * r;
+    const w = 12, h = 20, ov = 5; // half-width, total height, oval ry
+
     if (G.servers[a]) {
-      ctx.fillStyle = "rgba(255, 176, 0, 0.2)";
       ctx.strokeStyle = "#ffb000";
       ctx.lineWidth = 2;
-      ctx.fillRect(x - 16, y - 12, 32, 24);
-      ctx.strokeRect(x - 16, y - 12, 32, 24);
-      ctx.font = "bold 11px 'Courier New', monospace";
-      ctx.fillStyle = "#ffb000";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("SRV", x, y);
+
+      // Solid cylinder — bottom hidden, only front visible
+      // 1. Fill body rectangle (covers everything between top and bottom)
+      ctx.fillStyle = "#7a5500";
+      ctx.fillRect(x - w, y - h/2, w * 2, h);
+
+      // 2. Cover bottom with solid fill (flat bottom, no visible ellipse)
+      ctx.beginPath();
+      ctx.ellipse(x, y + h/2, w, ov, 0, 0, Math.PI * 2);
+      ctx.fillStyle = "#7a5500";
+      ctx.fill();
+
+      // 3. Side lines
+      ctx.beginPath();
+      ctx.moveTo(x - w, y - h/2); ctx.lineTo(x - w, y + h/2);
+      ctx.moveTo(x + w, y - h/2); ctx.lineTo(x + w, y + h/2);
+      ctx.stroke();
+
+      // 4. Bottom edge (front arc only — just the visible curve)
+      ctx.beginPath();
+      ctx.ellipse(x, y + h/2, w, ov, 0, 0, Math.PI);
+      ctx.stroke();
+
+      // 5. Two tier lines (front arcs)
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(x, y - h * 0.15, w, ov, 0, 0, Math.PI);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(x, y + h * 0.15, w, ov, 0, 0, Math.PI);
+      ctx.stroke();
+
+      // 6. Top cap — brightest, full ellipse
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(x, y - h/2, w, ov, 0, 0, Math.PI * 2);
+      ctx.fillStyle = "#c89000";
+      ctx.fill();
+      ctx.stroke();
     } else {
+      // Destroyed — dashed outline
+      const bodyColor = "rgba(100, 30, 30, 0.25)";
+      ctx.fillStyle = bodyColor;
       ctx.strokeStyle = "rgba(255, 51, 51, 0.25)";
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 3]);
-      ctx.strokeRect(x - 16, y - 12, 32, 24);
+      ctx.beginPath();
+      ctx.ellipse(x, y - h/2, w, ov, 0, Math.PI, Math.PI * 2);
+      ctx.lineTo(x + w, y + h/2);
+      ctx.ellipse(x, y + h/2, w, ov, 0, 0, Math.PI);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(x, y - h/2, w, ov, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.font = "bold 10px 'Courier New', monospace";
-      ctx.fillStyle = "rgba(255, 51, 51, 0.3)";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("XXX", x, y);
+      // X
+      ctx.strokeStyle = "rgba(255, 51, 51, 0.4)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x - w + 2, y - h/2); ctx.lineTo(x + w - 2, y + h/2);
+      ctx.moveTo(x + w - 2, y - h/2); ctx.lineTo(x - w + 2, y + h/2);
+      ctx.stroke();
     }
   }
 
@@ -1731,6 +1816,21 @@ function getThreatPos(t) {
   };
 }
 
+function drawPolygon(cx, cy, r, sides, rotation) {
+  // sides=0 means circle
+  if (sides === 0) {
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    return;
+  }
+  const rot = rotation || -Math.PI / 2; // point up by default
+  for (let i = 0; i <= sides; i++) {
+    const angle = rot + (i * Math.PI * 2) / sides;
+    const px = cx + Math.cos(angle) * r;
+    const py = cy + Math.sin(angle) * r;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+}
+
 function drawThreat(t) {
   const tDef = THREAT_TYPES[t.type];
   const pos = getThreatPos(t);
@@ -1738,58 +1838,69 @@ function drawThreat(t) {
   if (scale <= 0) return;
 
   const r = (tDef.boss ? 22 : 18) * scale;
+  const sides = tDef.sides;
+  // Diamond rotated 45 degrees looks better
+  const rotation = sides === 4 ? 0 : -Math.PI / 2;
 
   ctx.save();
   ctx.globalAlpha = Math.min(1, scale + 0.2);
 
-  // Background
+  // Shape fill
   ctx.beginPath();
-  ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
-  ctx.fillStyle = adjustAlpha(tDef.color, 0.25);
+  drawPolygon(pos.x, pos.y, r, sides, rotation);
+  ctx.closePath();
+  ctx.fillStyle = adjustAlpha(tDef.color, 0.3);
   ctx.fill();
   ctx.strokeStyle = tDef.color;
-  ctx.lineWidth = tDef.boss ? 2 : 1;
+  ctx.lineWidth = tDef.boss ? 2.5 : 1.5;
   ctx.stroke();
 
   // Flash overlay
   if (t.animFlash > 0) {
     ctx.beginPath();
-    ctx.arc(pos.x, pos.y, r + 3, 0, Math.PI * 2);
+    drawPolygon(pos.x, pos.y, r + 3, sides, rotation);
+    ctx.closePath();
     ctx.fillStyle = `rgba(255, 255, 255, ${t.animFlash * 0.5})`;
     ctx.fill();
   }
 
   // Glyph
   if (scale > 0.4) {
-    ctx.font = `bold ${Math.round((tDef.boss ? 14 : 12) * scale)}px 'Courier New', monospace`;
+    const fontSize = Math.round((tDef.boss ? 13 : 11) * scale);
+    ctx.font = `bold ${fontSize}px 'Courier New', monospace`;
     ctx.fillStyle = tDef.color;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(tDef.glyph, pos.x, pos.y - 3 * scale);
+    ctx.fillText(tDef.glyph, pos.x, pos.y - 1 * scale);
 
-    // HP bar
-    const barW = r * 1.4;
-    const barH = 4 * scale;
-    const barY = pos.y + r * 0.55;
-    const hpPct = Math.max(0, Math.min(1, t.hp / t.maxHp));
-    ctx.fillStyle = "rgba(0,0,0,0.5)";
-    ctx.fillRect(pos.x - barW/2, barY, barW, barH);
-    if (hpPct > 0) {
-      ctx.fillStyle = hpPct > 0.5 ? "#00ff41" : hpPct > 0.25 ? "#ffb000" : "#ff3333";
-      ctx.fillRect(pos.x - barW/2, barY, barW * hpPct, barH);
+    // HP dots below the shape
+    const dotR = 3 * scale;
+    const dotY = pos.y + r + dotR + 3 * scale;
+    const totalW = (t.maxHp - 1) * (dotR * 2.5);
+    const startX = pos.x - totalW / 2;
+    for (let i = 0; i < t.maxHp; i++) {
+      const dx = startX + i * dotR * 2.5;
+      ctx.beginPath();
+      ctx.arc(dx, dotY, dotR, 0, Math.PI * 2);
+      if (i < t.hp) {
+        // Filled dot = remaining HP
+        ctx.fillStyle = t.hp === t.maxHp ? tDef.color : (t.hp === 1 ? "#ff3333" : "#ffb000");
+        ctx.fill();
+      } else {
+        // Empty dot = lost HP
+        ctx.strokeStyle = "rgba(255,255,255,0.2)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
     }
-
-    // HP text
-    ctx.font = `${Math.round(9 * scale)}px 'Courier New', monospace`;
-    ctx.fillStyle = t.hp < t.maxHp ? "#ff6633" : tDef.color;
-    ctx.fillText(`${t.hp}/${t.maxHp}`, pos.x, barY + barH + 8 * scale);
   }
 
   // Honeypot indicator
   if (t.honeypotted) {
-    ctx.font = "7px 'Courier New', monospace";
+    ctx.font = `bold ${Math.round(8 * scale)}px 'Courier New', monospace`;
     ctx.fillStyle = "#ffb000";
-    ctx.fillText("HP", pos.x + r + 4, pos.y);
+    ctx.textAlign = "center";
+    ctx.fillText("\u2691", pos.x + r + 6, pos.y); // flag icon
   }
 
   ctx.restore();
