@@ -468,20 +468,19 @@ const EFFECT_TYPES = {
 
 const SLIDER_DEFS = {
   handSize:     { label: "Hand Size",          min: 4, max: 6, default: 5, unit: " cards",  harder: false, desc: "Cards drawn each turn" },
-  discardLimit: { label: "Discard Limit",      min: 1, max: 3, default: 1, unit: "",        harder: false, desc: "Cards you can swap per turn" },
+  discardLimit: { label: "Discard Limit",      min: 1, max: 3, default: 1, unit: "",        harder: false, desc: "Cards you can swap per turn", hidden: true },
   misconfigs:   { label: "Misconfigurations",  min: 0, max: 5, default: 2, unit: " dead",   harder: true,  desc: "Useless cards in the deck" },
   waveSize:     { label: "Total Threats",       min: 20, max: 60, default: 40, unit: "",     harder: true,  desc: "Enemies in the threat deck", step: 5 },
-  maxEnemyLvl:  { label: "Max Enemy Level",    min: 1, max: 4, default: 4, unit: "",        harder: true,  desc: "1=SK only, 2=+MW, 3=+APT, 4=+Bosses",
+  maxEnemyLvl:  { label: "Max Enemy Level",    min: 1, max: 4, default: 4, unit: "",        harder: true,  desc: "1=SK only, 2=+MW, 3=+APT, 4=+Bosses", hidden: true,
     labels: ["Script Kiddies", "+Malware", "+APTs", "+Bosses"] },
-  activeDef:    { label: "Active Defense",     min: 0, max: 2, default: 0, unit: " dmg",   harder: false, desc: "Damage dealt to threats when they destroy a firewall",
+  activeDef:    { label: "Active Defense",     min: 0, max: 2, default: 0, unit: " dmg",   harder: false, desc: "Bonus damage dealt back to a threat when it destroys a firewall",
     labels: ["Off", "1 damage", "2 damage"] },
 };
 
 const DIFFICULTY_PRESETS = {
-  easy:      { label: "Junior Analyst",     sliders: { handSize: 6, discardLimit: 2, misconfigs: 0, waveSize: 25, maxEnemyLvl: 2, activeDef: 2 } },
-  normal:    { label: "Security Engineer",  sliders: { handSize: 5, discardLimit: 1, misconfigs: 2, waveSize: 40, maxEnemyLvl: 4, activeDef: 0 } },
-  hard:      { label: "CISO",              sliders: { handSize: 4, discardLimit: 1, misconfigs: 4, waveSize: 50, maxEnemyLvl: 4, activeDef: 0 } },
-  nightmare: { label: "Nation State Target", sliders: { handSize: 4, discardLimit: 1, misconfigs: 5, waveSize: 60, maxEnemyLvl: 4, activeDef: 0 } },
+  easy:   { label: "Beginner",  sliders: { handSize: 6, discardLimit: 1, misconfigs: 0, waveSize: 30, maxEnemyLvl: 4, activeDef: 1 } },
+  normal: { label: "Normal",    sliders: { handSize: 5, discardLimit: 1, misconfigs: 1, waveSize: 40, maxEnemyLvl: 4, activeDef: 1 } },
+  hard:   { label: "Hard",      sliders: { handSize: 5, discardLimit: 1, misconfigs: 2, waveSize: 50, maxEnemyLvl: 4, activeDef: 0 } },
 };
 
 // Active config — mutated by UI sliders
@@ -613,7 +612,8 @@ function newGame(presetId) {
     hand: [],
     threatDeck: threatDeck,
     threats: [],         // {id, type, ring, arc, hp, maxHp, honeypotted, immunePerimeter}
-    firewalls: [true, true, true, true, true, true], // one per arc
+    fwMaxHP: 1,
+    firewalls: Array(6).fill(1), // 1 HP — walls always fall in one hit (Castle Panic faithful)
     servers:   [true, true, true, true, true, true],
     nextThreatId: 1,
     slain: 0,
@@ -825,13 +825,15 @@ function processEventQueue() {
     }
 
     case "destroy_firewall": {
-      G.firewalls[evt.arc] = false;
+      // Decrement firewall HP
+      G.firewalls[evt.arc] = Math.max(0, G.firewalls[evt.arc] - 1);
+      const fwDead = G.firewalls[evt.arc] <= 0;
       const angle = (evt.arc + 0.5) * ARC_ANGLE - Math.PI / 2;
       const x = CENTER + Math.cos(angle) * FIREWALL_RADIUS;
       const y = CENTER + Math.sin(angle) * FIREWALL_RADIUS;
-      addFlash(x, y, "#ff3333", 25);
-      sfxFirewallDestroyed();
-      log(evt.msg);
+      addFlash(x, y, fwDead ? "#ff3333" : "#ffaa00", 25);
+      if (fwDead) sfxFirewallDestroyed();
+      log(fwDead ? evt.msg : evt.msg.replace("DESTROYED", "damaged"));
       // Active Defense — firewall damages the attacker
       const adDmg = G.diffConfig ? G.diffConfig.activeDef : 0;
       if (adDmg > 0 && evt.threatId) {
@@ -890,6 +892,52 @@ function processEventQueue() {
       addFlash(CENTER, CENTER, evt.flashColor || "#ff6600", 200);
       updateAll();
       break;
+
+    case "try_breach": {
+      // Castle Panic rules: wall always dies in one hit, threat advances to Core
+      const breachThreat = G.threats.find(th => th.id === evt.threatId);
+      if (!breachThreat || breachThreat.dying) break;
+
+      const bAngle = (evt.arc + 0.5) * ARC_ANGLE - Math.PI / 2;
+
+      if (G.firewalls[evt.arc] > 0) {
+        // Firewall destroyed — threat passes through
+        G.firewalls[evt.arc] = 0;
+        breachThreat.ring = 4;
+        const bx = CENTER + Math.cos(bAngle) * FIREWALL_RADIUS;
+        const by = CENTER + Math.sin(bAngle) * FIREWALL_RADIUS;
+        addFlash(bx, by, "#ff3333", 25);
+        sfxFirewallDestroyed();
+        log(`${evt.threatName} DESTROYED firewall in ${evt.arcName}!`);
+
+        // Active Defense — firewall deals damage on its way down
+        const bAdDmg = G.diffConfig ? G.diffConfig.activeDef : 0;
+        if (bAdDmg > 0 && !breachThreat.dying) {
+          breachThreat.hp -= bAdDmg;
+          breachThreat.animFlash = 1.0;
+          log(`Active Defense dealt ${bAdDmg} damage to ${evt.threatName}!`);
+          if (breachThreat.hp <= 0) {
+            breachThreat.dying = true;
+            G.slain++;
+            sfxSlain();
+            log(`${evt.threatName} destroyed by Active Defense!`);
+          }
+        }
+      } else if (G.servers[evt.arc]) {
+        // No firewall — hit server directly
+        G.servers[evt.arc] = false;
+        breachThreat.ring = 4;
+        sfxServerDestroyed();
+        const sr = CORE_RADIUS * 0.55;
+        addFlash(CENTER + Math.cos(bAngle) * sr, CENTER + Math.sin(bAngle) * sr, "#ff0000", 35);
+        log(`${evt.threatName} DESTROYED server in ${evt.arcName}!`);
+      } else {
+        // No firewall, no server — threat enters Core
+        breachThreat.ring = 4;
+      }
+      updateAll();
+      break;
+    }
 
     case "check_lose":
       if (G.servers.every(s => !s)) {
@@ -1253,7 +1301,7 @@ function playHarden(idx) {
   }
   // Rebuild the first destroyed one (could add UI to pick)
   const arcIdx = destroyed[0];
-  G.firewalls[arcIdx] = true;
+  G.firewalls[arcIdx] = G.fwMaxHP || 1;
   log(`Firewall in ${ARCS[arcIdx].name} rebuilt!`);
 
   const card = G.hand.splice(idx, 1)[0];
@@ -1281,19 +1329,8 @@ function doAdvancePhase() {
     }
 
     if (t.ring === 3) {
-      // At Endpoint — hits firewall or server
-      queue.push({ type: "advance_core", threatId: t.id, delay: 300 });
-      if (G.firewalls[t.arc]) {
-        queue.push({ type: "destroy_firewall", arc: t.arc, threatId: t.id, msg: `${tName} DESTROYED firewall in ${arcName}!`, delay: 500 });
-        // Mark it so subsequent threats in this loop see it as destroyed
-        G.firewalls[t.arc] = false; // pre-mark (event will try to set false again, harmless)
-        // Undo — we need to defer. Actually the queue processes later. Let's pre-compute and let events handle state.
-        // Reset — we'll let the event handle it. But we need to know the state NOW for branching.
-        // Solution: track planned destructions
-        G.firewalls[t.arc] = true; // undo, let event handle it
-      } else if (G.servers[t.arc]) {
-        queue.push({ type: "destroy_server", arc: t.arc, msg: `${tName} DESTROYED server in ${arcName}!`, delay: 600 });
-      }
+      // At Endpoint — try to breach. Resolved at event time so firewall HP is current.
+      queue.push({ type: "try_breach", threatId: t.id, arc: t.arc, threatName: tName, arcName: arcName, delay: 400 });
     } else if (t.ring === 4) {
       // In Core — rotate clockwise
       const newArc = (t.arc + 1) % NUM_ARCS;
@@ -1380,7 +1417,7 @@ function doSpawnPhase() {
           const angle = (t + 0.5) * ARC_ANGLE - Math.PI / 2;
           const x = CENTER + Math.cos(angle) * FIREWALL_RADIUS;
           const y = CENTER + Math.sin(angle) * FIREWALL_RADIUS;
-          G.firewalls[t] = false;
+          G.firewalls[t] = 0;
           addFlash(x, y, "#ff3333", 25);
           log(`Ransomware destroyed firewall in ${ARCS[t].name}!`);
           updateAll();
@@ -1429,10 +1466,10 @@ function resolveEffect(type) {
     sfxZeroDay();
     screenPulse("#ff0000", 1500);
   } else if (type === "ddos") {
-    const fwTargets = G.firewalls.map((fw, i) => fw ? i : -1).filter(i => i >= 0);
+    const fwTargets = G.firewalls.map((fw, i) => fw > 0 ? i : -1).filter(i => i >= 0);
     if (fwTargets.length > 0) {
       const t = fwTargets[Math.floor(Math.random() * fwTargets.length)];
-      G.firewalls[t] = false;
+      G.firewalls[t] = 0; // DDoS fully destroys
       if (G.servers[t]) {
         G.servers[t] = false;
         log(`DDoS destroyed firewall AND server in ${ARCS[t].name}!`);
@@ -1602,14 +1639,20 @@ function render() {
     const y = CENTER + Math.sin(angle) * FIREWALL_RADIUS;
     if (G.firewalls[a]) {
       // Firewall icon — brick wall with 3D side panel
-      const fw = 20, fh = 22, sd = 6; // front width, front height, side depth
+      const fw = 20, fh = 22, sd = 6;
+      const damaged = G.fwMaxHP > 1 && G.firewalls[a] < G.fwMaxHP;
+      const fwStroke = damaged ? "#ddaa00" : "#00ff41";
+      const fwFill = damaged ? "rgba(200, 160, 0, 0.2)" : "rgba(0, 200, 50, 0.2)";
+      const fwSideFill = damaged ? "rgba(160, 130, 0, 0.15)" : "rgba(0, 150, 40, 0.15)";
+      const fwSideStroke = damaged ? "#bb8800" : "#00cc33";
+      const fwTopFill = damaged ? "rgba(180, 140, 0, 0.12)" : "rgba(0, 180, 45, 0.12)";
       ctx.save();
       ctx.translate(x, y);
 
       // Front face — brick wall
-      ctx.fillStyle = "rgba(0, 200, 50, 0.2)";
+      ctx.fillStyle = fwFill;
       ctx.fillRect(-fw/2, -fh/2, fw, fh);
-      ctx.strokeStyle = "#00ff41";
+      ctx.strokeStyle = fwStroke;
       ctx.lineWidth = 1.5;
       ctx.strokeRect(-fw/2, -fh/2, fw, fh);
 
@@ -1645,8 +1688,8 @@ function render() {
       }
 
       // 3D side panel (right side, slight depth)
-      ctx.fillStyle = "rgba(0, 150, 40, 0.15)";
-      ctx.strokeStyle = "#00cc33";
+      ctx.fillStyle = fwSideFill;
+      ctx.strokeStyle = fwSideStroke;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(fw/2, -fh/2);
@@ -1658,7 +1701,7 @@ function render() {
       ctx.stroke();
 
       // 3D top panel
-      ctx.fillStyle = "rgba(0, 180, 45, 0.12)";
+      ctx.fillStyle = fwTopFill;
       ctx.beginPath();
       ctx.moveTo(-fw/2, -fh/2);
       ctx.lineTo(-fw/2 + sd, -fh/2 - sd/2);
@@ -1667,6 +1710,16 @@ function render() {
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
+
+      // HP indicator (show if firewall has > 1 max HP)
+      if (G.fwMaxHP > 1) {
+        const fwHP = G.firewalls[a];
+        ctx.font = "bold 10px 'Courier New', monospace";
+        ctx.fillStyle = damaged ? "#ddaa00" : "#00ff41";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(fwHP, 0, 0);
+      }
 
       ctx.restore();
     } else {
@@ -1994,7 +2047,7 @@ function setupInput() {
         const dist = Math.sqrt((x - fx) ** 2 + (y - fy) ** 2);
         if (dist < 30) {
           // Rebuild this firewall
-          G.firewalls[arcIdx] = true;
+          G.firewalls[arcIdx] = G.fwMaxHP || 1;
           log(`Firewall in ${ARCS[arcIdx].name} rebuilt!`);
           addFlash(fx, fy, "#00ff41", 20);
           sfxHarden();
@@ -2278,6 +2331,7 @@ function showMainMenu() {
   // Build slider HTML
   let slidersHTML = "";
   for (const [key, def] of Object.entries(SLIDER_DEFS)) {
+    if (def.hidden) continue;
     const val = houseRules[key];
     const step = def.step || 1;
     const displayVal = def.labels ? def.labels[val - def.min] : val + (def.unit || "");
@@ -2361,7 +2415,7 @@ function showHowToPlay(tab) {
           <li><b>1. Draw</b> — Automatically draw cards to fill your hand</li>
           <li><b>2. Discard</b> — Click a card to discard it and draw a replacement (red borders = discard mode). Click Skip Discard to keep your hand</li>
           <li><b>3. Play</b> — Click a card to select it, then click a highlighted threat on the board to attack. Play as many cards as you want, then click End Play Phase</li>
-          <li><b>4. Advance</b> — All threats move 1 ring inward. Threats reaching Endpoint destroy firewalls, then servers. Threats in the Core rotate clockwise</li>
+          <li><b>4. Advance</b> — All threats move 1 ring inward. A threat at Endpoint destroys the firewall in its arc and enters the Core. Next turn it hits the server. Threats in the Core rotate clockwise</li>
           <li><b>5. Spawn</b> — 2 new threats drawn from the deck and placed in the Internet ring. Event tokens (Zero-Day, DDoS) may also appear</li>
         </ul>
       </div>
@@ -2457,9 +2511,10 @@ function showHowToPlay(tab) {
         <ul>
           <li>Threats spawn in the Internet ring and advance 1 ring inward each turn</li>
           <li>Threats cannot be targeted while in the Internet ring — they must reach the Perimeter first</li>
-          <li>When a threat reaches the Endpoint/Core boundary, it destroys the firewall in its arc</li>
-          <li>If no firewall remains, the threat destroys the server</li>
-          <li>Threats in the Core rotate clockwise, hitting firewalls and servers as they go</li>
+          <li>When a threat advances past Endpoint, it destroys the firewall in its arc and enters the Core</li>
+          <li>If no firewall remains, the threat destroys the server instead</li>
+          <li>Threats in the Core rotate clockwise, destroying firewalls and servers as they go</li>
+          <li>With Active Defense enabled, a threat takes bonus damage when it destroys a firewall</li>
         </ul>
       </div>
       <div class="htp-section">
@@ -2493,7 +2548,7 @@ function showHowToPlay(tab) {
           <li>Quarantine pushes threats back outward — buy yourself time</li>
           <li>Watch the Threats Left counter — when it hits 0, you just need to survive what's on the board</li>
           <li>Threats in the Core can only be hit by Contractor or Incident Commander — save these</li>
-          <li>Active Defense (house rule) makes firewalls damage attackers on destruction — powerful on easy mode</li>
+          <li>Active Defense (house rule) deals bonus damage to threats when they destroy a firewall — can finish off weakened threats</li>
         </ul>
       </div>
     </div>
@@ -2531,7 +2586,7 @@ function showGameOver(won) {
     <p>Threats slain: ${G.slain}</p>
     <p>Servers remaining: ${serversLeft}/6</p>
     <p>Turns taken: ${G.turn}</p>
-    <p>Firewalls remaining: ${G.firewalls.filter(Boolean).length}/6</p>
+    <p>Firewalls remaining: ${G.firewalls.filter(f => f > 0).length}/6</p>
     <p style="font-size:18px;color:var(--crt-amber);text-align:center;margin-top:12px;">
       Score: ${Math.max(0, score)} — Grade: ${grade}
     </p>
@@ -2603,7 +2658,7 @@ const TUTORIAL_STEPS = [
   { title: "The Board", text: "The board has 5 rings. Threats spawn in the Internet ring (outer) and advance inward each turn through Perimeter, Network, and Endpoint toward your Core.\n\n6 network segments divide the board into arcs (DMZ, Web, Corporate, Engineering, Finance, Executive)." },
   { title: "Your Cards", text: "Each turn you draw up to 5 cards. Cards like 'Perimeter Def [DMZ/Web]' can only hit threats in the Perimeter ring AND in the DMZ or Web Services arcs.\n\nSpecial cards like Contractor or Incident Commander can hit threats anywhere." },
   { title: "Playing Cards", text: "During the Play phase:\n1. Click a card in your hand to select it\n2. Valid targets glow on the board\n3. Click a threat to attack it\n\nYou can play as many cards as you want, then click 'End Play Phase'." },
-  { title: "Firewalls & Servers", text: "6 Firewalls (FW) guard the Core boundary. When a threat advances past Endpoint, it destroys the firewall first, then the server behind it.\n\nUse Harden cards to rebuild destroyed firewalls!" },
+  { title: "Firewalls & Servers", text: "6 Firewalls guard the Core boundary. When a threat advances past Endpoint, it destroys the firewall and enters the Core. On the next turn, it will hit the server.\n\nWith Active Defense enabled, the firewall deals damage back to the attacker as it falls.\n\nUse Harden cards to rebuild destroyed firewalls!" },
   { title: "Boss Threats", text: "Boss threats have special abilities:\n- Botnet Commander spawns extra Script Kiddies\n- Ransomware destroys a firewall on arrival\n- Nation State is immune to Perimeter cards\n- Supply Chain heals nearby threats" },
   { title: "Good Luck!", text: "Defeat all threats in the deck with at least 1 server standing to win.\n\nPress H anytime for the full How to Play guide. Press Escape to close dialogs." },
 ];
