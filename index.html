@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -35,7 +35,6 @@ html, body {
   font-family: var(--font-mono);
   font-size: 13px;
   overflow: hidden;
-  user-select: none;
 }
 
 /* Layout — canvas gets square aspect ratio, sidebar takes remaining width */
@@ -167,7 +166,7 @@ html, body {
   border-bottom: 1px solid var(--crt-border); min-height: 48px;
   transition: opacity 0.3s var(--ease-out-quart);
 }
-/* action-log removed — now using SIEM log bar */
+/* SIEM feed is in sidebar lower section */
 
 /* Card Hand (in sidebar) */
 #card-hand {
@@ -206,19 +205,19 @@ html, body {
   to { opacity: 1; transform: translateX(0); }
 }
 /* Card exit — played (slides left, green tint) */
-.card.card-exit-play {
+#card-hand .card.card-exit-play {
   animation: card-play-out 0.3s var(--ease-out-quart) forwards;
-  border-color: var(--crt-green) !important;
-  background: rgba(0,255,65,0.15) !important;
+  border-color: var(--crt-green);
+  background: rgba(0,255,65,0.15);
 }
 @keyframes card-play-out {
   to { opacity: 0; transform: translateX(-40px) scale(0.9); max-height: 0; padding: 0 10px; margin: 0; }
 }
 /* Card exit — discarded (slides right, red tint) */
-.card.card-exit-discard {
+#card-hand .card.card-exit-discard {
   animation: card-discard-out 0.3s var(--ease-out-quart) forwards;
-  border-color: var(--crt-red) !important;
-  background: rgba(255,51,51,0.15) !important;
+  border-color: var(--crt-red);
+  background: rgba(255,51,51,0.15);
 }
 @keyframes card-discard-out {
   to { opacity: 0; transform: translateX(40px) scale(0.9); max-height: 0; padding: 0 10px; margin: 0; }
@@ -305,8 +304,7 @@ html, body {
   align-items: center; justify-content: center;
   transition: background 0.3s var(--ease-out-quart);
 }
-#modal-overlay.active { display: flex; background: rgba(0,0,0,0.85); }
-#modal-overlay.active { animation: modal-bg-in 0.3s var(--ease-out-quart) forwards; }
+#modal-overlay.active { display: flex; background: rgba(0,0,0,0.85); animation: modal-bg-in 0.3s var(--ease-out-quart) forwards; }
 @keyframes modal-bg-in { from { background: rgba(0,0,0,0); } to { background: rgba(0,0,0,0.85); } }
 #modal-content {
   background: var(--crt-panel); border: 1px solid var(--crt-green-dim); border-radius: 4px;
@@ -342,6 +340,29 @@ html, body {
 .help-tab-content { display: none; }
 .help-tab-content.active { display: block; }
 
+/* Focus indicators — keyboard accessibility */
+*:focus-visible {
+  outline: 2px solid var(--crt-amber);
+  outline-offset: 2px;
+}
+.card:focus-visible { outline-offset: 0; border-color: var(--crt-amber); }
+.help-tab:focus-visible { outline-offset: -1px; }
+.action-btn:focus-visible { outline-offset: 1px; }
+
+/* User-select: disable only on game-interactive areas, allow text selection in modals/logs */
+#game-container { user-select: none; }
+#modal-content, #siem-log, #phase-instructions { user-select: text; -webkit-user-select: text; }
+
+/* Touch target sizing */
+@media (pointer: coarse) {
+  .hud-buttons button { min-width: 44px; min-height: 44px; }
+  .action-btn { min-height: 44px; padding: 10px 16px; }
+  .help-tab { padding: 10px 16px; min-height: 44px; }
+  .card { padding: 10px 12px; }
+}
+
+/* Favicon */
+
 #announcements { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 
 @media (max-width: 768px) {
@@ -349,6 +370,7 @@ html, body {
   #sidebar { display: none; }
 }
 </style>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%230a0a0a'/><text x='16' y='22' text-anchor='middle' font-size='18' fill='%2300ff41'>P</text></svg>">
 </head>
 <body>
 <div id="game-container">
@@ -2116,6 +2138,18 @@ function updateAll() {
   updateHUD();
   updateHand();
   updatePhaseUI();
+  updateCanvasLabel();
+}
+
+function updateCanvasLabel() {
+  const c = document.getElementById("game-canvas");
+  if (!c || !G) return;
+  const threats = G.threats.filter(t => !t.dying).length;
+  const servers = G.servers.filter(Boolean).length;
+  const fws = G.firewalls.filter(f => f > 0).length;
+  c.setAttribute("aria-label",
+    `Network defense board. Turn ${G.turn}. ${threats} threats on board. ${servers} of 6 servers intact. ${fws} of 6 firewalls intact. Phase: ${G.phase}.`
+  );
 }
 
 let prevHUDState = {};
@@ -2368,7 +2402,7 @@ function showMainMenu() {
       <button class="action-btn" style="opacity:0.7" onclick="closeModal(); showHowToPlay();">How to Play</button>
     </div>
   `;
-  modal.classList.add("active");
+  openModal();
 }
 
 function showHowToPlay(tab) {
@@ -2567,7 +2601,7 @@ function showHowToPlay(tab) {
       <button class="action-btn" onclick="closeModal();">Close</button>
     </div>
   `;
-  modal.classList.add("active");
+  openModal();
 }
 
 function showGameOver(won) {
@@ -2595,11 +2629,41 @@ function showGameOver(won) {
       <button class="action-btn" style="opacity:0.7" onclick="closeModal(); showMainMenu();">Main Menu</button>
     </div>
   `;
-  modal.classList.add("active");
+  openModal();
 }
 
+let _prevFocus = null;
 function closeModal() {
   document.getElementById("modal-overlay").classList.remove("active");
+  if (_prevFocus) { _prevFocus.focus(); _prevFocus = null; }
+}
+
+function openModal() {
+  _prevFocus = document.activeElement;
+  document.getElementById("modal-overlay").classList.add("active");
+  setTimeout(trapFocusInModal, 50);
+}
+
+function trapFocusInModal() {
+  const modal = document.getElementById("modal-content");
+  if (!modal) return;
+  const focusable = modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  first.focus();
+
+  modal.addEventListener("keydown", function handler(e) {
+    if (e.key !== "Tab") return;
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+    if (!document.getElementById("modal-overlay").classList.contains("active")) {
+      modal.removeEventListener("keydown", handler);
+    }
+  });
 }
 
 // Click outside modal content to close (only for help/non-essential modals)
@@ -2689,7 +2753,7 @@ function showTutorialStep() {
       </div>
     </div>
   `;
-  modal.classList.add("active");
+  openModal();
 }
 
 /* ============================================================
