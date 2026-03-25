@@ -559,24 +559,25 @@ function resolveConfig() {
    ============================================================ */
 function buildCardDeck(cfg) {
   const deck = [];
+  let uid = 1;
   // 9 each of perimeter/network/endpoint defense (3 per segment pair)
   for (const ring of ["perimeterDef","networkDef","endpointDef"]) {
     for (let p = 0; p < 3; p++) {
-      for (let i = 0; i < 3; i++) deck.push({ type: ring, pairIdx: p });
+      for (let i = 0; i < 3; i++) deck.push({ type: ring, pairIdx: p, _uid: uid++ });
     }
   }
   // 3 each of any-segment ring cards
-  for (let i = 0; i < 3; i++) deck.push({ type: "firewallRule" });
-  for (let i = 0; i < 3; i++) deck.push({ type: "networkACL" });
-  for (let i = 0; i < 3; i++) deck.push({ type: "hostPatch" });
+  for (let i = 0; i < 3; i++) deck.push({ type: "firewallRule", _uid: uid++ });
+  for (let i = 0; i < 3; i++) deck.push({ type: "networkACL", _uid: uid++ });
+  for (let i = 0; i < 3; i++) deck.push({ type: "hostPatch", _uid: uid++ });
   // Specials (base count + extra from difficulty)
   const specials = ["incidentCmd","contractor","honeypot","harden","quarantine","threatIntel","escalation"];
   const baseCounts = [2, 2, 3, 3, 2, 2, 2];
   for (let s = 0; s < specials.length; s++) {
-    for (let i = 0; i < baseCounts[s] + cfg.extraSpecials; i++) deck.push({ type: specials[s] });
+    for (let i = 0; i < baseCounts[s] + cfg.extraSpecials; i++) deck.push({ type: specials[s], _uid: uid++ });
   }
   // Dead cards
-  for (let i = 0; i < cfg.misconfigCards; i++) deck.push({ type: "misconfig" });
+  for (let i = 0; i < cfg.misconfigCards; i++) deck.push({ type: "misconfig", _uid: uid++ });
   return deck;
 }
 
@@ -762,31 +763,11 @@ function addFlash(x, y, color, radius) {
 }
 
 function animateCardOut(handIdx, mode, callback) {
-  // Find the DOM card element for this hand index
-  // Cards are rendered in sorted order, so we need to find which DOM child maps to this handIdx
   const container = document.getElementById("card-hand");
-  const cards = container.querySelectorAll(".card");
-  let targetEl = null;
-
-  // The sorted indices are computed the same way as in updateHand
-  const indices = G.hand.map((_, i) => i);
-  indices.sort((a, b) => cardSortKey(G.hand[a]) - cardSortKey(G.hand[b]));
-
-  let domIdx = 0;
-  for (let ci = 0; ci < indices.length; ci++) {
-    // Skip separator divs
-    if (indices[ci] === handIdx) {
-      // Find the actual card element (skip separators)
-      let cardCount = 0;
-      for (const child of container.children) {
-        if (child.classList.contains("card")) {
-          if (cardCount === ci) { targetEl = child; break; }
-          cardCount++;
-        }
-      }
-      break;
-    }
-  }
+  const card = G.hand[handIdx];
+  const targetEl = card && card._uid
+    ? container.querySelector(`.card[data-card-id="${card._uid}"]`)
+    : null;
 
   if (targetEl) {
     const cls = mode === "discard" ? "card-exit-discard" : "card-exit-play";
@@ -2278,8 +2259,18 @@ function cardSortKey(card) {
 
 function updateHand() {
   const container = document.getElementById("card-hand");
-  container.innerHTML = "";
   container.classList.toggle("discard-phase", G.phase === "discard");
+
+  // FLIP Step 1 (FIRST): snapshot existing card positions
+  const oldPositions = new Map();
+  container.querySelectorAll(".card[data-card-id]").forEach(el => {
+    const uid = el.dataset.cardId;
+    const rect = el.getBoundingClientRect();
+    oldPositions.set(uid, { top: rect.top, left: rect.left });
+  });
+
+  // Rebuild DOM
+  container.innerHTML = "";
 
   const segBadgeClass = ["badge-dmzweb", "badge-corpeng", "badge-finexec"];
 
@@ -2289,7 +2280,7 @@ function updateHand() {
 
   // Track groups for visual separators
   let lastGroup = -1;
-  let cardIdx = 0;
+  let newCardStagger = 0;
 
   for (const i of indices) {
     const card = G.hand[i];
@@ -2307,10 +2298,11 @@ function updateHand() {
 
     const el = document.createElement("div");
     el.className = "card";
+    el.dataset.cardId = card._uid;
     if (i === selectedCardIdx) el.classList.add("selected");
     if (card.type === "misconfig") el.classList.add("disabled");
 
-    // Ring badge — solid dark style, clearly a "ring" indicator
+    // Ring badge
     let ringBadge = "";
     if (def.ring === 1) ringBadge = `<span class="card-badge badge-perimeter">\u25CE Perimeter</span>`;
     else if (def.ring === 2) ringBadge = `<span class="card-badge badge-network">\u25CE Network</span>`;
@@ -2319,7 +2311,7 @@ function updateHand() {
     else if (def.ring === -2) ringBadge = `<span class="card-badge badge-any-ring">\u25CE Anywhere</span>`;
     else if (def.ring >= -7 && def.ring < 0 && def.ring !== -99) ringBadge = `<span class="card-badge badge-special">\u2606 Special</span>`;
 
-    // Segment badge — colored border matching the board arc colors
+    // Segment badge
     let segBadge = "";
     if (def.segment === "pair" && card.pairIdx !== undefined) {
       segBadge = `<span class="card-badge ${segBadgeClass[card.pairIdx]}">\u25A0 ${PAIR_NAMES[card.pairIdx]}</span>`;
@@ -2342,12 +2334,52 @@ function updateHand() {
       ${descText}
     `;
     el.title = def.desc;
-    el.classList.add("card-enter");
-    el.style.animationDelay = (cardIdx * 60) + "ms"; // stagger by visual position
+
+    // Only animate entry for NEW cards (not previously in DOM)
+    const uidStr = String(card._uid);
+    if (!oldPositions.has(uidStr)) {
+      el.classList.add("card-enter");
+      el.style.animationDelay = (newCardStagger * 60) + "ms";
+      newCardStagger++;
+    }
+
     el.addEventListener("click", () => selectCard(i));
     container.appendChild(el);
-    cardIdx++;
   }
+
+  // FLIP Step 2 (LAST + INVERT + PLAY): animate surviving cards to new positions
+  requestAnimationFrame(() => {
+    container.querySelectorAll(".card[data-card-id]").forEach(el => {
+      const uid = el.dataset.cardId;
+      if (!oldPositions.has(uid)) return; // new card, handled by card-enter
+
+      const oldPos = oldPositions.get(uid);
+      const newRect = el.getBoundingClientRect();
+      const deltaX = oldPos.left - newRect.left;
+      const deltaY = oldPos.top - newRect.top;
+
+      if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1) return; // no movement
+
+      // INVERT: jump to old position
+      el.style.transition = "none";
+      el.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+
+      // PLAY: animate to new position
+      requestAnimationFrame(() => {
+        el.style.transition = "transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)";
+        el.style.transform = "";
+
+        // Clean up inline styles after animation
+        el.addEventListener("transitionend", function cleanup(e) {
+          if (e.propertyName === "transform") {
+            el.style.transition = "";
+            el.style.transform = "";
+            el.removeEventListener("transitionend", cleanup);
+          }
+        });
+      });
+    });
+  });
 
   // Action buttons
   const actions = document.getElementById("hand-actions");
