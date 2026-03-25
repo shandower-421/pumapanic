@@ -2327,14 +2327,12 @@ function updateHand() {
       segBadge = `<span class="card-badge badge-segment">\u25A0 Any Segment</span>`;
     }
 
-    // Short description for special cards
+    // Card description
     let descText = "";
-    if (def.ring < 0 && def.ring !== -99) {
+    if (def.ring === -99) {
+      descText = `<span class="card-desc" style="color:var(--crt-red)">${def.desc}</span>`;
+    } else {
       descText = `<span class="card-desc">${def.desc}</span>`;
-    } else if (def.ring === -99) {
-      descText = `<span class="card-desc" style="color:var(--crt-red)">Useless! Discard this.</span>`;
-    } else if (def.damage > 1) {
-      descText = `<span class="card-desc">Deals ${def.damage} damage</span>`;
     }
 
     el.innerHTML = `
