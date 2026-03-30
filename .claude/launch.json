@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "pumaarch",
+      "name": "pumapanic",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8080", "-d", "/Users/shandower/Claude/pumagame"],
-      "port": 8080
+      "runtimeArgs": ["-m", "http.server", "8081", "-d", "/Users/shandower/Claude/pumapanic"],
+      "port": 8081
     }
   ]
 }
